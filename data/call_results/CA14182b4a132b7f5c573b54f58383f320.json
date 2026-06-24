@@ -1,0 +1,26 @@
+{
+  "call_sid": "CA14182b4a132b7f5c573b54f58383f320",
+  "completed": true,
+  "responses": [
+    {
+      "question": "What is your main health problem today?",
+      "answer": "Dizziness and fever"
+    },
+    {
+      "question": "Since when are you facing this problem?",
+      "answer": "Since yesterday"
+    },
+    {
+      "question": "How severe is your problem right now?",
+      "answer": "8/10"
+    },
+    {
+      "question": "How has the problem changed over time?",
+      "answer": "It's not changing, it's becoming more worse even."
+    },
+    {
+      "question": "Have you taken any treatment or medicine for this problem?",
+      "answer": "No, I haven't tried any remedy or haven't taken any medicine yet."
+    }
+  ]
+}
