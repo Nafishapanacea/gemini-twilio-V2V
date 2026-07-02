@@ -1,4 +1,4 @@
-# Gemini + Twilio Voice Interview
+# Gemini + Twilio Voice Conversation
 
 A simple FastAPI application that connects Twilio voice calls to Google Gemini Live for an automated medical interview.
 

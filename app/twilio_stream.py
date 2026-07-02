@@ -3,11 +3,33 @@ import asyncio
 import base64
 import json
 
+from twilio.rest import Client
 from fastapi import WebSocketDisconnect
 from google.genai import types
 
 from app.interview import InterviewState
 from app.storage import save_call_result
+
+from app.config import (
+    TWILIO_ACCOUNT_SID,
+    TWILIO_AUTH_TOKEN
+)
+
+def end_call(call_sid: str):
+    try:
+        client = Client(
+            TWILIO_ACCOUNT_SID,
+            TWILIO_AUTH_TOKEN
+        )
+
+        client.calls(call_sid).update(
+            status="completed"
+        )
+
+        print(f"Call {call_sid} terminated")
+
+    except Exception as e:
+        print(f"Failed to terminate call: {e}")
 
 async def bridge_call(
         websocket,
@@ -61,6 +83,7 @@ async def bridge_call(
                         if getattr(state, "goodbye_sent", False):
                             # Give Twilio 2 seconds to finish playing the audio
                             await asyncio.sleep(2)
+                            end_call(state.call_sid)
                             return
 
                     if response.tool_call:
@@ -79,6 +102,8 @@ async def bridge_call(
                                         )
                                     ]
                                 )
+
+                                print("state is :- ", state.completed())
 
                                 if state.completed():
                                     result = {

@@ -1,8 +1,18 @@
-QUESTIONS = [
-    "What is your main health problem today?",
-    "Since when are you facing this problem?",
-    "How has the problem changed over time?",
-    "Have you taken any treatment or medicine for this problem?",
+import json
+
+# QUESTIONS = [
+#     "What is your main health problem today?",
+#     "Since when are you facing this problem?",
+#     "How has the problem changed over time?",
+#     "Have you taken any treatment or medicine for this problem?",
+# ]
+
+QUESTIONS =[
+    "आज आपको सबसे ज़्यादा किस बात की तकलीफ़ है?",
+    "यह तकलीफ़ कब से है?",
+    "अभी यह तकलीफ़ कितनी ज़्यादा है?",
+    "समय के साथ यह तकलीफ़ कैसी हुई है?",
+    "क्या आपने इसके लिए कोई इलाज या दवा ली है?"
 ]
 
 

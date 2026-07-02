@@ -5,6 +5,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from twilio.rest import Client
 from google.genai import types
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import *
 from app.gemini_client import GeminiInterview
@@ -13,6 +14,14 @@ from app.twilio_stream import bridge_call
 from app.storage import RESULT_DIR
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class TriggerCallRequest(BaseModel):
     phone_number: str
@@ -43,6 +52,7 @@ async def trigger_call(request: TriggerCallRequest):
             detail=f"Failed to initiate call: {str(e)}"
         )
 
+# For production
 @app.get("/trigger-call")
 async def trigger_call_get(phone_number: str):
     if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN or not TWILIO_NUMBER:
@@ -69,6 +79,7 @@ async def trigger_call_get(phone_number: str):
             detail=f"Failed to initiate call: {str(e)}"
         )
 
+# For quick testing purpose only
 @app.get("/call-results/{call_sid}")
 async def get_call_results(call_sid: str):
     file_path = RESULT_DIR / f"{call_sid}.json"
@@ -106,12 +117,12 @@ async def incoming_call():
     # Convert HTTP(S) url to WS(S) protocol for Twilio stream
     stream_url = PUBLIC_URL.replace("https://", "wss://").replace("http://", "ws://")
     xml = f"""
-<Response>
-<Connect>
-<Stream url="{stream_url}/media-stream"/>
-</Connect>
-</Response>
-"""
+        <Response>
+        <Connect>
+        <Stream url="{stream_url}/media-stream"/>
+        </Connect>
+        </Response>
+    """
 
     return Response(
         xml,
@@ -168,10 +179,10 @@ async def media_stream(
                 parts=[
                     types.Part(
                         text=f"""
-Ask exactly:
+                            Ask exactly:
 
-{state.current_question_text()}
-"""
+                            {state.current_question_text()}
+                        """
                     )
                 ]
             ),
