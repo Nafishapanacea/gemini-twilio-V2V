@@ -31,11 +31,41 @@ def end_call(call_sid: str):
     except Exception as e:
         print(f"Failed to terminate call: {e}")
 
+async def generate_hindi_summary(client, responses) -> str:
+    qa_text = ""
+    for r in responses:
+        qa_text += f"प्रश्न: {r['question']}\nउत्तर: {r['answer']}\n\n"
+    
+    prompt = f"""
+मरीज के साक्षात्कार का विवरण नीचे दिया गया है:
+{qa_text}
+ऊपर दिए गए प्रश्न और उत्तर के आधार पर मरीज की स्थिति का एक संक्षिप्त और स्पष्ट सारांश हिंदी में एक पैराग्राफ में लिखें।
+उदाहरण के लिए:
+प्रश्न: आज आपको सबसे ज़्यादा किस बात की तकलीफ़ है? | उत्तर: बुखार और चक्कर आ रहे हैं।
+प्रश्न: यह तकलीफ़ कब से है? | उत्तर: तीन दिन से।
+प्रश्न: अभी यह तकलीफ़ कितनी ज़्यादा है? | उत्तर: 10 में से 8 के स्तर पर है।
+प्रश्न: समय के साथ यह तकलीफ़ कैसी हुई है? | उत्तर: समय के साथ बुखार बढ़ता जा रहा है।
+प्रश्न: क्या आपने इसके लिए कोई इलाज या दवा ली है? | उत्तर: नहीं ली है।
+सारांश: मरीज पिछले 3 दिनों से बुखार और चक्कर की शिकायत कर रहा/रही है। तकलीफ़ की गंभीरता 10 में से 8 है तथा समय के साथ बुखार बढ़ रहा है। मरीज ने अभी तक कोई दवा या उपचार शुरू नहीं किया है।
+
+कृपया केवल सारांश पैराग्राफ ही वापस करें। कोई अन्य पाठ, लेबल या अतिरिक्त स्पष्टीकरण न जोड़ें।
+"""
+    try:
+        response = await client.aio.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"Error generating summary: {e}")
+        return "साक्षात्कार पूरा हो गया है।"
+
 async def bridge_call(
         websocket,
         gemini_session,
         state,
-        stream_sid
+        stream_sid,
+        gemini_client
 ):
 
     inbound_state = None
@@ -81,8 +111,8 @@ async def bridge_call(
                     # Check if the model has finished saying goodbye, and if so, terminate
                     if response.server_content and response.server_content.turn_complete:
                         if getattr(state, "goodbye_sent", False):
-                            # Give Twilio 2 seconds to finish playing the audio
-                            await asyncio.sleep(2)
+                            # Give Twilio 5 seconds to finish playing the audio
+                            await asyncio.sleep(5)
                             end_call(state.call_sid)
                             return
 
@@ -106,10 +136,11 @@ async def bridge_call(
                                 print("state is :- ", state.completed())
 
                                 if state.completed():
+                                    summary_text = await generate_hindi_summary(gemini_client, state.responses)
                                     result = {
                                         "call_sid": state.call_sid,
                                         "completed": True,
-                                        "responses": state.responses
+                                        "summary": summary_text
                                     }
                                     save_call_result(state.call_sid, result)
                                     print(f"\n--- INTERVIEW COMPLETED FOR CALL: {state.call_sid} ---")
@@ -121,7 +152,7 @@ async def bridge_call(
                                             role="user",
                                             parts=[
                                                 types.Part(
-                                                    text="The interview is now complete. Thank the user and say goodbye politely. End the call."
+                                                    text="The interview is now complete. Tell the user exactly: 'आपके सहयोग के लिए धन्यवाद। आपका दिन शुभ हो।' and then stop speaking. Do not say anything else."
                                                 )
                                             ]
                                         ),

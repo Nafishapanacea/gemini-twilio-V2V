@@ -223,7 +223,8 @@ async def media_stream(
                 websocket,
                 session,
                 state,
-                stream_sid
+                stream_sid,
+                gemini.client
             )
     finally:
         if call_sid != "demo-call":
