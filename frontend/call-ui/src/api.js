@@ -13,9 +13,12 @@ export const triggerCall = async (phoneNumber) => {
     return response.data;
 };
 
-export const getCallResult = async (callSid) => {
+export const getCallResult = async (callSid, wait = false) => {
     const response = await axios.get(
-        `${API_BASE_URL}/call-results/${callSid}`
+        `${API_BASE_URL}/call-results/${callSid}`,
+        {
+            params: wait ? { wait: true } : {}
+        }
     );
 
     return response.data;

@@ -1,4 +1,5 @@
 import json
+import asyncio
 from pathlib import Path
 from fastapi import FastAPI, WebSocket, HTTPException
 from fastapi.responses import Response
@@ -11,7 +12,7 @@ from app.config import *
 from app.gemini_client import GeminiInterview
 from app.interview import InterviewState
 from app.twilio_stream import bridge_call
-from app.storage import RESULT_DIR
+from app.storage import RESULT_DIR, active_calls, register_call
 
 app = FastAPI()
 
@@ -41,6 +42,7 @@ async def trigger_call(request: TriggerCallRequest):
             from_=TWILIO_NUMBER,
             url=f"{PUBLIC_URL}/incoming-call"
         )
+        register_call(call.sid)
         return {
             "status": "success",
             "message": f"Call initiated successfully to {request.phone_number}",
@@ -68,6 +70,7 @@ async def trigger_call_get(phone_number: str):
             from_=TWILIO_NUMBER,
             url=f"{PUBLIC_URL}/incoming-call"
         )
+        register_call(call.sid)
         return {
             "status": "success",
             "message": f"Call initiated successfully to {phone_number}",
@@ -79,10 +82,35 @@ async def trigger_call_get(phone_number: str):
             detail=f"Failed to initiate call: {str(e)}"
         )
 
-# For quick testing purpose only
 @app.get("/call-results/{call_sid}")
-async def get_call_results(call_sid: str):
+async def get_call_results(call_sid: str, wait: bool = False):
     file_path = RESULT_DIR / f"{call_sid}.json"
+    
+    if wait and not file_path.exists():
+        # Check if the call is currently active
+        event = active_calls.get(call_sid)
+        if event:
+            try:
+                # Wait for the call to end (up to 5 minutes)
+                await asyncio.wait_for(event.wait(), timeout=300.0)
+            except asyncio.TimeoutError:
+                pass
+        else:
+            # If the call is not active, wait briefly to see if it starts up or is written
+            timeout = 10.0
+            interval = 0.5
+            elapsed = 0.0
+            while elapsed < timeout and not file_path.exists():
+                event = active_calls.get(call_sid)
+                if event:
+                    try:
+                        await asyncio.wait_for(event.wait(), timeout=(timeout - elapsed))
+                    except asyncio.TimeoutError:
+                        pass
+                    break
+                await asyncio.sleep(interval)
+                elapsed += interval
+
     if not file_path.exists():
         raise HTTPException(
             status_code=404,
@@ -140,58 +168,67 @@ async def media_stream(
     stream_sid = None
     call_sid = "demo-call"
     try:
-        while True:
-            message = await websocket.receive_text()
-            event_data = json.loads(message)
-            event = event_data.get("event")
-            if event == "connected":
-                continue
-            elif event == "start":
-                stream_sid = event_data["start"]["streamSid"]
-                call_sid = event_data["start"].get("callSid", call_sid)
-                break
-            else:
-                print(f"Warning: Expected start/connected event, got: {event}")
-                break
-    except Exception as e:
-        print(f"Error receiving start event from Twilio: {e}")
-        await websocket.close()
-        return
+        try:
+            while True:
+                message = await websocket.receive_text()
+                event_data = json.loads(message)
+                event = event_data.get("event")
+                if event == "connected":
+                    continue
+                elif event == "start":
+                    stream_sid = event_data["start"]["streamSid"]
+                    call_sid = event_data["start"].get("callSid", call_sid)
+                    register_call(call_sid)
+                    break
+                else:
+                    print(f"Warning: Expected start/connected event, got: {event}")
+                    break
+        except Exception as e:
+            print(f"Error receiving start event from Twilio: {e}")
+            await websocket.close()
+            return
 
-    state = InterviewState(
-        call_sid=call_sid
-    )
-
-    gemini = GeminiInterview(
-        GEMINI_API_KEY
-    )
-
-    config = gemini.build_config()
-
-    async with gemini.client.aio.live.connect(
-        model=gemini.model,
-        config=config
-    ) as session:
-
-        await session.send_client_content(
-            turns=types.Content(
-                role="user",
-                parts=[
-                    types.Part(
-                        text=f"""
-                            Ask exactly:
-
-                            {state.current_question_text()}
-                        """
-                    )
-                ]
-            ),
-            turn_complete=True
+        state = InterviewState(
+            call_sid=call_sid
         )
 
-        await bridge_call(
-            websocket,
-            session,
-            state,
-            stream_sid
+        gemini = GeminiInterview(
+            GEMINI_API_KEY
         )
+
+        config = gemini.build_config()
+
+        async with gemini.client.aio.live.connect(
+            model=gemini.model,
+            config=config
+        ) as session:
+
+            await session.send_client_content(
+                turns=types.Content(
+                    role="user",
+                    parts=[
+                        types.Part(
+                            text=f"""
+                                Ask exactly:
+
+                                {state.current_question_text()}
+                            """
+                        )
+                    ]
+                ),
+                turn_complete=True
+            )
+
+            await bridge_call(
+                websocket,
+                session,
+                state,
+                stream_sid
+            )
+    finally:
+        if call_sid != "demo-call":
+            from app.storage import signal_call_finished, unregister_call
+            signal_call_finished(call_sid)
+            # Give pending long polls a short window to fetch and return results before unregistering
+            await asyncio.sleep(5)
+            unregister_call(call_sid)

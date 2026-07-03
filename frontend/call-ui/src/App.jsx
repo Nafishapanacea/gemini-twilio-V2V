@@ -10,21 +10,6 @@ function App() {
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
 
-  const pollForResults = async (callSid) => {
-    const interval = setInterval(async () => {
-      try {
-        const result = await getCallResult(callSid);
-
-        setResultJson(result);
-        setStatus("Evaluation completed");
-
-        clearInterval(interval);
-      } catch (err) {
-        console.log("Waiting for results...");
-      }
-    }, 5000);
-  };
-
   const handleCall = async () => {
     try {
       setLoading(true);
@@ -37,7 +22,18 @@ function App() {
 
       setStatus("Call initiated. Waiting for evaluation to finish...");
 
-      await pollForResults(response.call_sid);
+      try {
+        // Wait for the conversation to complete using a long-polling request
+        const result = await getCallResult(response.call_sid, true);
+        setResultJson(result);
+        setStatus("Evaluation completed");
+      } catch (err) {
+        setStatus("Call ended");
+        setError(
+          err.response?.data?.detail ||
+          "Call ended before completion or failed to retrieve results"
+        );
+      }
     } catch (err) {
       setError(
         err.response?.data?.detail ||
